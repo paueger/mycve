@@ -1,0 +1,119 @@
+## Tenda W20E
+
+> bin_vision: US_W20EV4.0br_V15.11.0.6(1068_1546_841)_CN_TDC.bin  
+> httpd  
+> goform/editQos  
+>
+> type: bof  
+> string: qosListConnecttedNum  
+
+### description
+
+A buffer overflow vulnerability was discovered in Tenda W20E V4.0br_V15.11.0.6. Attackers can exploit this vulnerability by specifying the value of `qosListConnecttedNum`. When `qosListConnecttedNum` is passed to `lstAdd` and formatted into the fixed-size `ruleConnectLimit` buffer by `sprintf` without length validation, it may cause a buffer overflow.
+
+### code
+
+~~~c
+   websDefineAction("editQos", formQOSRuleEdt);   
+        ret = lstAdd(wp, nmPre, indx + 1);
+~~~
+
+
+~~~c
+int __cdecl lstAdd(webs_t wp, char *nmPre, int indx)
+{
+  const char *p_; // r1
+  int iId; // r0
+  char mibVal[512]; // [sp+34h] [bp-13B0h] BYREF
+  char mibNm[512]; // [sp+234h] [bp-11B0h] BYREF
+  char slcIP[512]; // [sp+434h] [bp-FB0h] BYREF
+  char slctLst[1024]; // [sp+634h] [bp-DB0h] BYREF
+  char ipGrpId[128]; // [sp+A34h] [bp-9B0h] BYREF
+  char ruleConnectLimit[128]; // [sp+AB4h] [bp-930h] BYREF
+  char ruleQos[1024]; // [sp+B34h] [bp-8B0h] BYREF
+  char pri[64]; // [sp+F34h] [bp-4B0h] BYREF
+  char plcy[64]; // [sp+F74h] [bp-470h] BYREF
+  char name[1024]; // [sp+FB4h] [bp-430h] BYREF
+  int idConnectLimit; // [sp+13B4h] [bp-30h]
+  int idQosRule; // [sp+13B8h] [bp-2Ch]
+  int tmGrpId; // [sp+13BCh] [bp-28h]
+  int ret; // [sp+13C0h] [bp-24h]
+  char *cnct; // [sp+13C4h] [bp-20h]
+  char *tmGrpNm; // [sp+13C8h] [bp-1Ch]
+  char *md; // [sp+13CCh] [bp-18h]
+  char *dwnRt; // [sp+13D0h] [bp-14h]
+  char *upRt; // [sp+13D4h] [bp-10h]
+  char *ipGrpNm; // [sp+13D8h] [bp-Ch]
+  char *en; // [sp+13DCh] [bp-8h]
+
+  en = 0;
+  memset(name, 0, sizeof(name));
+  ipGrpNm = 0;
+  upRt = 0;
+  dwnRt = 0;
+  md = 0;
+  tmGrpNm = 0;
+  cnct = 0;
+  *(_DWORD *)plcy = 48;
+  memset(&plcy[4], 0, 0x3Cu);
+  *(_DWORD *)pri = 48;
+  memset(&pri[4], 0, 0x3Cu);
+  memset(ruleQos, 0, sizeof(ruleQos));
+  memset(ruleConnectLimit, 0, sizeof(ruleConnectLimit));
+  memset(ipGrpId, 0, sizeof(ipGrpId));
+  cnct = websGetVar((Webs_1 *)wp, "qosListConnecttedNum", defaultGetValue__6);
+  en = websGetVar((Webs_1 *)wp, "qosListEn", "1");
+  ipGrpNm = websGetVar((Webs_1 *)wp, "qosListIPGroupRemark", defaultGetValue__6);
+  memset(slctLst, 0, sizeof(slctLst));
+  memset(slcIP, 0, sizeof(slcIP));
+  ret = slctLstByKey(IP_GROUP, ipGrpNm, 1, slctLst);
+  if ( ret )
+  {
+    getKeyfrmLst(slctLst, ";", 3, slcIP);
+    getKeyfrmLst(slctLst, ";", 0, ipGrpId);
+    log_debug_print((int)"lstAdd", 406, 1, 65, "%d,%s", ret, slcIP);
+    upRt = websGetVar((Webs_1 *)wp, "qosListUpstream", "64");
+    dwnRt = websGetVar((Webs_1 *)wp, "qosListDownstream", "128");
+    md = websGetVar((Webs_1 *)wp, "qosListMode", "share");
+    tmGrpNm = websGetVar((Webs_1 *)wp, "qosListTimeGroupRemark", defaultGetValue__6);
+    tmGrpId = getGroupIdByName("bhv.timegroup.list", tmGrpNm);
+    if ( tmGrpId > 0 )
+    {
+      idQosRule = generate_rule_id("bandwidth.mode.list", ";", 0);
+      idConnectLimit = generate_rule_id("bhv.connectlimit.list", ";", 0);
+      sprintf(name, "userdefined%d", idQosRule);
+      if ( !strncmp(md, "share", 6u) )
+        p_ = "1";
+      else
+        p_ = "0";
+      sprintf(ruleQos, "%d;%s;%s;%s;%s;%s;%s;%s;%s;%d", idQosRule, en, name, slcIP, upRt, dwnRt, p_, plcy, pri, tmGrpId);
+      sprintf(ruleConnectLimit, "%d;userdefined%d;1;%s;%s;%d", idConnectLimit, idConnectLimit, ipGrpId, cnct, tmGrpId); // <--- sink: the user-controlled qosListConnecttedNum value flows into sprintf and writes into the fixed stack buffer ruleConnectLimit
+      memset(mibNm, 0, sizeof(mibNm));
+      memset(mibVal, 0, sizeof(mibVal));
+      listNumAdd(nmPre, 1);
+      strcpy(mibNm, "bhv.connectlimit.list");
+      listNumAdd(mibNm, 1);
+      sprintf(mibNm, "%s%d", nmPre, indx);
+      log_debug_print((int)"lstAdd", 432, 1, 65, "ruleName[%s],qosRule[%s]", mibNm, ruleQos);
+      SetValue((int)mibNm, (int)ruleQos);
+      sprintf(mibNm, "bhv.connectlimit.list%d", indx);
+      log_debug_print((int)"lstAdd", 436, 1, 65, "ruleName[%s],connectLimitRule[%s]", mibNm, ruleConnectLimit);
+      SetValue((int)mibNm, (int)ruleConnectLimit);
+      modifyGroupReferById("bhv.timegroup.flag", "bhv.timegroup.list", tmGrpId, 1);
+      iId = atoi(ipGrpId);
+      modifyGroupReferById("bhv.ipgroup.flag", "bhv.ipgroup.list", iId, 1);
+      return 1;
+    }
+    else
+    {
+      log_debug_print((int)"lstAdd", 415, 1, 65, "there is not the TIMEGROUP[%s] in mib", tmGrpNm);
+      return 0;
+    }
+  }
+  else
+  {
+    log_debug_print((int)"lstAdd", 401, 1, 65, "there is not the IPGROUP[%s] in mib", ipGrpNm);
+    return 0;
+  }
+}
+~~~
